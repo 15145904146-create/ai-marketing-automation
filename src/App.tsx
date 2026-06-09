@@ -6,6 +6,7 @@ import DeliveryRecordDetail from './components/Delivery/DeliveryRecordDetail';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import LoginModal from './auth/LoginModal';
 import { mockDeliveryRecords } from './data/mock-delivery-records';
+import { mockConversations } from './data/mock-conversations';
 import type { PanelType, PanelContent, Conversation, Campaign, DeliveryRecord } from './types';
 
 export default function App() {
@@ -23,7 +24,7 @@ function AppContent() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelType, setPanelType] = useState<PanelType>(null);
   const [panelContent, setPanelContent] = useState<PanelContent>(null);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [deliveryRecords] = useState<DeliveryRecord[]>(mockDeliveryRecords);

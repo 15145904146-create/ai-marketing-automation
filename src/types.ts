@@ -11,12 +11,30 @@ export interface Message {
   actionable?: boolean;
 }
 
+// ===== Marketing Journey State Machine =====
+// 用户全链路行为状态机，从对话起步到复盘结束
+export type JourneyStage =
+  | 'clarifying'         // 需求澄清中
+  | 'plan_generated'     // 方案已生成
+  | 'plan_confirmed'     // 方案已确认
+  | 'audience_ready'     // 人群表已生成
+  | 'material_ready'     // 话术已就绪
+  | 'config_submitted'   // 配置已提交
+  | 'executing'          // 投放中
+  | 'paused'             // 已暂停
+  | 'completed'          // 投放已完成
+  | 'reviewed'           // 已复盘
+  | 'cancelled';         // 已终止
+
 // ===== Conversation =====
 export interface Conversation {
   id: string;
   title: string;
   date: string;
   preview: string;
+  stage?: JourneyStage;  // 对话在全链路中的当前阶段
+  channel?: DeliveryChannel; // 可选，如果已明确渠道
+  audienceSize?: string;     // 可选，如果已明确人群量级
 }
 
 // ===== Delivery Record (team-shared campaign records) =====
@@ -94,6 +112,7 @@ export interface DeliveryRecord {
   id: string;
   title: string;
   status: DeliveryStatus;
+  stage?: JourneyStage; // 全链路阶段标签，未提供时从 status 推导
   date: string;
   dateRange: string;
   preview: string;

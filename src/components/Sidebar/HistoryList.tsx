@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import type { Conversation, DeliveryRecord, DeliveryStatus } from '../../types';
+import type { Conversation, DeliveryRecord, JourneyStage, DeliveryStatus } from '../../types';
 
 interface HistoryListProps {
   conversations: Conversation[];
@@ -13,46 +13,114 @@ interface HistoryListProps {
   onCopyCampaign?: (title: string) => void;
 }
 
-const statusConfig: Record<string, { label: string; colorClass: string; dotClass: string }> = {
-  executing: { label: '执行中', colorClass: 'bg-amber-50 text-amber-700 border-amber-200', dotClass: 'bg-amber-400' },
-  completed: { label: '已完成', colorClass: 'bg-slate-50 text-slate-600 border-slate-200', dotClass: 'bg-slate-500' },
-  paused: { label: '已暂停', colorClass: 'bg-red-50 text-red-600 border-red-200', dotClass: 'bg-red-400' },
-  draft: { label: '方案中', colorClass: 'bg-blue-50 text-blue-600 border-blue-200', dotClass: 'bg-blue-400' },
-  approving: { label: '审批中', colorClass: 'bg-amber-50 text-amber-700 border-amber-200', dotClass: 'bg-amber-400' },
-  cancelled: { label: '已终止', colorClass: 'bg-slate-50 text-slate-400 border-slate-200', dotClass: 'bg-slate-300' },
+// ===== Journey Stage Configuration =====
+// 全链路状态机：从对话起步到复盘结束的 11 个标签
+const stageConfig: Record<JourneyStage, { label: string; colorClass: string; dotClass: string; order: number }> = {
+  clarifying:       { label: '需求澄清中',   order: 1,  colorClass: 'bg-sky-50 text-sky-700 border-sky-200',           dotClass: 'bg-sky-400' },
+  plan_generated:   { label: '方案已生成',   order: 2,  colorClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',  dotClass: 'bg-indigo-400' },
+  plan_confirmed:   { label: '方案已确认',   order: 3,  colorClass: 'bg-violet-50 text-violet-700 border-violet-200',  dotClass: 'bg-violet-400' },
+  audience_ready:   { label: '人群表已生成', order: 4,  colorClass: 'bg-purple-50 text-purple-700 border-purple-200',  dotClass: 'bg-purple-400' },
+  material_ready:   { label: '话术已就绪',   order: 5,  colorClass: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',dotClass: 'bg-fuchsia-400' },
+  config_submitted: { label: '配置已提交',   order: 6,  colorClass: 'bg-amber-50 text-amber-700 border-amber-200',     dotClass: 'bg-amber-400' },
+  executing:        { label: '投放中',       order: 7,  colorClass: 'bg-orange-50 text-orange-700 border-orange-200',  dotClass: 'bg-orange-400' },
+  paused:           { label: '已暂停',       order: 8,  colorClass: 'bg-red-50 text-red-600 border-red-200',           dotClass: 'bg-red-400' },
+  completed:        { label: '投放已完成',   order: 9,  colorClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',dotClass: 'bg-emerald-400' },
+  reviewed:         { label: '已复盘',       order: 10, colorClass: 'bg-teal-50 text-teal-700 border-teal-200',        dotClass: 'bg-teal-400' },
+  cancelled:        { label: '已终止',       order: 11, colorClass: 'bg-slate-50 text-slate-400 border-slate-200',     dotClass: 'bg-slate-300' },
 };
 
 const channelLabel: Record<string, string> = { outbound_call: '外呼', sms: '短信' };
 
-type FilterStatus = 'all' | DeliveryStatus;
+// 从 DeliveryStatus 推导 JourneyStage（兜底逻辑）
+function deriveStage(status: DeliveryStatus): JourneyStage {
+  switch (status) {
+    case 'draft':     return 'plan_generated';
+    case 'approving': return 'config_submitted';
+    case 'executing': return 'executing';
+    case 'paused':    return 'paused';
+    case 'completed': return 'completed';
+    case 'cancelled': return 'cancelled';
+    default:          return 'clarifying';
+  }
+}
+
+// 统一历史项类型
+type HistoryItem = {
+  id: string;
+  kind: 'conversation' | 'delivery';
+  title: string;
+  date: string;
+  preview: string;
+  stage: JourneyStage;
+  channel?: string;
+  audienceSize?: string;
+  owner?: string;
+  roi?: number;
+  progress?: number;
+  dateRange?: string;
+};
+
+type FilterStage = 'all' | JourneyStage;
 type FilterChannel = 'all' | string;
 
 export default function HistoryList({
   conversations, activeConversationId, onSelect, onDelete,
   deliveryRecords, activeRecordId, onDeliveryRecordSelect, onCopyCampaign,
 }: HistoryListProps) {
-  const [convExpanded, setConvExpanded] = useState(true);
-  const [recExpanded, setRecExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [filterStage, setFilterStage] = useState<FilterStage>('all');
   const [filterChannel, setFilterChannel] = useState<FilterChannel>('all');
 
-  // Sort: executing first, then by date descending
-  const sortedRecords = useMemo(() => {
-    const sorted = [...deliveryRecords].sort((a, b) => {
-      if (a.status === 'executing' && b.status !== 'executing') return -1;
-      if (b.status === 'executing' && a.status !== 'executing') return 1;
-      return 0;
+  // 合并对话记录与投放记录为统一历史列表
+  const items = useMemo<HistoryItem[]>(() => {
+    const convItems: HistoryItem[] = conversations.map(c => ({
+      id: c.id,
+      kind: 'conversation',
+      title: c.title,
+      date: c.date,
+      preview: c.preview,
+      stage: c.stage ?? 'clarifying',
+      channel: c.channel,
+      audienceSize: c.audienceSize,
+    }));
+    const recItems: HistoryItem[] = deliveryRecords.map(r => ({
+      id: r.id,
+      kind: 'delivery',
+      title: r.title,
+      date: r.date,
+      preview: r.preview,
+      stage: r.stage ?? deriveStage(r.status),
+      channel: r.channel,
+      audienceSize: r.audienceSize,
+      owner: r.owner,
+      roi: r.roi,
+      progress: r.progress,
+      dateRange: r.dateRange,
+    }));
+
+    const all = [...convItems, ...recItems];
+
+    // 排序：执行中优先 → 按 stage 进度倒序 → 按 date 倒序
+    all.sort((a, b) => {
+      if (a.stage === 'executing' && b.stage !== 'executing') return -1;
+      if (b.stage === 'executing' && a.stage !== 'executing') return 1;
+      const ao = stageConfig[a.stage].order;
+      const bo = stageConfig[b.stage].order;
+      if (ao !== bo) return bo - ao; // 进度更靠后的排前面
+      return b.date.localeCompare(a.date);
     });
 
-    return sorted.filter(r => {
-      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
-      if (filterChannel !== 'all' && r.channel !== filterChannel) return false;
+    return all.filter(it => {
+      if (filterStage !== 'all' && it.stage !== filterStage) return false;
+      if (filterChannel !== 'all' && it.channel !== filterChannel) return false;
       return true;
     });
-  }, [deliveryRecords, filterStatus, filterChannel]);
+  }, [conversations, deliveryRecords, filterStage, filterChannel]);
+
+  const totalCount = conversations.length + deliveryRecords.length;
 
   const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -77,93 +145,27 @@ export default function HistoryList({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Conversations section */}
-      <button
-        onClick={() => setConvExpanded(!convExpanded)}
-        className="flex items-center justify-between w-full px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors flex-shrink-0"
-      >
-        <div className="flex items-center gap-2">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-          </svg>
-          <span>对话记录</span>
-          <span className={`text-xs text-slate-400 transition-opacity duration-200 ${conversations.length > 0 ? 'opacity-100' : 'opacity-0'}`}>
-            ({conversations.length})
-          </span>
-        </div>
-        <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${convExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-
-      {convExpanded && (
-        <div className="px-3 pb-1">
-          {conversations.length === 0 ? (
-            <div className="text-xs text-slate-400 text-center py-3 px-2">
-              暂无对话记录
-            </div>
-          ) : (
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {conversations.map(item => (
-                <div key={item.id} className="relative group">
-                  <button
-                    onClick={() => onSelect(item.id)}
-                    className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 pr-8
-                      ${activeConversationId === item.id
-                        ? 'glass bg-slate-50/60 shadow-sm ring-1 ring-slate-200'
-                        : 'hover:bg-white/40 border border-transparent'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs flex-shrink-0 opacity-50">💬</span>
-                      <span className={`text-sm font-medium truncate flex-1 ${activeConversationId === item.id ? 'text-slate-800' : 'text-slate-700'}`}>
-                        {item.title}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1 truncate ml-5">{item.preview}</div>
-                    <div className="text-xs text-slate-300 mt-1.5 ml-5">{item.date}</div>
-                  </button>
-                  <button
-                    onClick={(e) => handleDeleteClick(e, item.id)}
-                    className="absolute top-2 right-2 p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
-                    title="删除对话"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Divider */}
-      <div className="border-t border-white/30 mx-3" />
-
-      {/* Delivery records section */}
+      {/* Unified history header */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-1 flex-shrink-0">
         <button
-          onClick={() => setRecExpanded(!recExpanded)}
+          onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
           </svg>
-          <span>投放记录</span>
-          <span className={`text-xs text-slate-400 transition-opacity duration-200 ${sortedRecords.length > 0 ? 'opacity-100' : 'opacity-0'}`}>
-            ({sortedRecords.length})
+          <span>历史记录</span>
+          <span className={`text-xs text-slate-400 transition-opacity duration-200 ${totalCount > 0 ? 'opacity-100' : 'opacity-0'}`}>
+            ({items.length})
           </span>
-          <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${recExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
 
-        {/* Filter button */}
         <button
           onClick={() => setFilterOpen(!filterOpen)}
-          className={`p-1 rounded-md transition-all text-slate-400 hover:text-slate-600 hover:bg-white/60 ${filterOpen || filterStatus !== 'all' || filterChannel !== 'all' ? 'text-slate-600 bg-white/40' : ''}`}
+          className={`p-1 rounded-md transition-all text-slate-400 hover:text-slate-600 hover:bg-white/60 ${filterOpen || filterStage !== 'all' || filterChannel !== 'all' ? 'text-slate-600 bg-white/40' : ''}`}
           title="筛选"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -173,23 +175,29 @@ export default function HistoryList({
       </div>
 
       {/* Filter panel */}
-      {filterOpen && recExpanded && (
+      {filterOpen && expanded && (
         <div className="px-3 pb-2">
           <div className="glass rounded-lg p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 w-8">状态</span>
+            <div className="flex items-start gap-2">
+              <span className="text-xs text-slate-400 w-8 mt-0.5">阶段</span>
               <div className="flex flex-wrap gap-1">
-                {(['all', 'completed', 'executing', 'paused'] as FilterStatus[]).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setFilterStatus(s)}
-                    className={`px-2 py-0.5 rounded text-xs transition-all ${
-                      filterStatus === s ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                    }`}
-                  >
-                    {s === 'all' ? '全部' : statusConfig[s]?.label || s}
-                  </button>
-                ))}
+                <button
+                  onClick={() => setFilterStage('all')}
+                  className={`px-2 py-0.5 rounded text-xs transition-all ${
+                    filterStage === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >全部</button>
+                {(Object.keys(stageConfig) as JourneyStage[])
+                  .sort((a, b) => stageConfig[a].order - stageConfig[b].order)
+                  .map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setFilterStage(s)}
+                      className={`px-2 py-0.5 rounded text-xs transition-all ${
+                        filterStage === s ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      }`}
+                    >{stageConfig[s].label}</button>
+                  ))}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -212,23 +220,24 @@ export default function HistoryList({
         </div>
       )}
 
-      {recExpanded && (
+      {expanded && (
         <div className="flex-1 overflow-y-auto px-3 pb-2">
-          {sortedRecords.length === 0 ? (
+          {items.length === 0 ? (
             <div className="text-xs text-slate-400 text-center py-6 px-2">
-              {deliveryRecords.length === 0
-                ? '暂无投放记录'
-                : '没有匹配的投放记录'}
+              {totalCount === 0 ? '暂无历史记录' : '没有匹配的记录'}
             </div>
           ) : (
             <div className="space-y-1">
-              {sortedRecords.map(record => {
-                const sc = statusConfig[record.status] || statusConfig.draft;
-                const isActive = activeRecordId === record.id;
+              {items.map(item => {
+                const sc = stageConfig[item.stage];
+                const isActive = item.kind === 'conversation'
+                  ? activeConversationId === item.id
+                  : activeRecordId === item.id;
+                const isCompleted = item.kind === 'delivery' && (item.stage === 'completed' || item.stage === 'reviewed');
                 return (
-                  <div key={record.id} className="relative group">
+                  <div key={`${item.kind}-${item.id}`} className="relative group">
                     <button
-                      onClick={() => onDeliveryRecordSelect(record.id)}
+                      onClick={() => item.kind === 'conversation' ? onSelect(item.id) : onDeliveryRecordSelect(item.id)}
                       className={`w-full text-left p-2.5 rounded-lg transition-all duration-200
                         ${isActive
                           ? 'glass bg-slate-50/60 shadow-sm ring-1 ring-slate-200'
@@ -238,34 +247,51 @@ export default function HistoryList({
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sc.dotClass}`} />
                         <span className={`text-sm font-medium truncate flex-1 ${isActive ? 'text-slate-800' : 'text-slate-700'}`}>
-                          {record.title}
+                          {item.title}
                         </span>
                         <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium border flex-shrink-0 ${sc.colorClass}`}>
                           {sc.label}
                         </span>
                       </div>
                       <div className="text-xs text-slate-400 mt-1 truncate ml-4">
-                        {channelLabel[record.channel]} · {record.audienceSize}人 · {record.roi != null ? `ROI ${record.roi}` : record.progress != null ? `进度 ${record.progress}%` : ''}
+                        {item.kind === 'delivery'
+                          ? `${channelLabel[item.channel || ''] || ''}${item.audienceSize ? ` · ${item.audienceSize}人` : ''}${item.roi != null ? ` · ROI ${item.roi}` : item.progress != null ? ` · 进度 ${item.progress}%` : ''}`
+                          : item.preview}
                       </div>
                       <div className="flex items-center gap-2 mt-1.5 ml-4">
-                        <span className="text-xs text-slate-300">{record.dateRange}</span>
-                        <span className="text-xs text-slate-300">·</span>
-                        <span className="text-xs text-slate-400">{record.owner}</span>
+                        <span className="text-xs text-slate-300">{item.dateRange || item.date}</span>
+                        {item.owner && (
+                          <>
+                            <span className="text-xs text-slate-300">·</span>
+                            <span className="text-xs text-slate-400">{item.owner}</span>
+                          </>
+                        )}
                       </div>
                     </button>
-                    {/* Quick action: 再来一次 — visible on hover */}
-                    {onCopyCampaign && record.status === 'completed' && (
+
+                    {/* 操作按钮：对话支持删除，已完成投放支持「再做一波」 */}
+                    {item.kind === 'conversation' ? (
+                      <button
+                        onClick={(e) => handleDeleteClick(e, item.id)}
+                        className="absolute top-2 right-2 p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                        title="删除对话"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    ) : onCopyCampaign && isCompleted ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onCopyCampaign(record.title);
+                          onCopyCampaign(item.title);
                         }}
                         className="absolute top-2 right-2 px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all opacity-0 group-hover:opacity-100 shadow-sm"
                         title="基于此活动再做一波"
                       >
                         再做一波
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
