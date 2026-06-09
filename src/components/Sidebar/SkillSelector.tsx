@@ -21,9 +21,9 @@ const availableSkills: Skill[] = [
   },
   {
     id: 'data',
-    name: '数据查询',
-    description: '投放效果数据查询与分析',
-    tools: ['接通率查询', '转化漏斗', '投放日报', '渠道对比', 'ROI分析'],
+    name: '营销券配置',
+    description: '快速配置营销优惠券与发放规则',
+    tools: ['满减券', '折扣券', '立减券', '发放规则', '核销设置'],
   },
 ];
 

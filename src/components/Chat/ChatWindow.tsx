@@ -27,7 +27,7 @@ const skillLabels: Record<string, string> = {
   plan: '营销方案生成',
   segment: 'AI圈人',
   outbound: '外呼投放',
-  data: '数据查询',
+  data: '营销券配置',
 };
 
 function getCurrentTime(): string {

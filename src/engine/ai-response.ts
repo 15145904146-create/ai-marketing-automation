@@ -23,7 +23,7 @@ function resolveCapability(input: string, activeSkill: Capability | null): Capab
   if (lower.includes('方案') || lower.includes('投放') || lower.includes('策略') || lower.includes('渠道') || lower.includes('营销') || lower.includes('策划')) return 'plan';
   if (lower.includes('人群') || lower.includes('圈人') || lower.includes('画像') || lower.includes('dmp') || lower.includes('受众') || lower.includes('圈选')) return 'segment';
   if (lower.includes('外呼') || lower.includes('电话') || lower.includes('话术') || lower.includes('拨打')) return 'outbound';
-  if (lower.includes('数据') || lower.includes('查询') || lower.includes('效果') || lower.includes('接通率') || lower.includes('转化') || lower.includes('日报') || lower.includes('roi')) return 'data';
+  if (lower.includes('券') || lower.includes('优惠') || lower.includes('满减') || lower.includes('折扣') || lower.includes('立减') || lower.includes('兑换') || lower.includes('发放规则')) return 'data';
 
   return 'plan'; // default
 }
@@ -812,11 +812,11 @@ function generateSingleSkill(input: string, cap: Capability, campaign: Campaign 
     };
   }
 
-  if (lower_includes(input, '数据') || lower_includes(input, '转化') || lower_includes(input, '效果')) {
+  if (lower_includes(input, '券') || lower_includes(input, '优惠') || lower_includes(input, '满减') || lower_includes(input, '折扣')) {
     return {
-      message: `## 数据查询结果
+      message: `## 营销券配置
 
-已获取最新投放数据，详情见右侧面板。`,
+已生成营销券配置详情，详见右侧面板。`,
       panelType: 'data',
       panelContent: buildDataContent(),
       actionType: 'viewDetails',
@@ -839,7 +839,7 @@ function generateOnboarding(input: string): AIResponseResult {
 1. **营销方案生成** — 智能生成全渠道营销方案、ROI测算
 2. **AI圈人** — 精准圈选目标人群，支持多维标签组合
 3. **外呼投放** — 自动化外呼触达、话术生成
-4. **数据查询** — 投放效果实时查询与分析
+4. **营销券配置** — 快速配置营销优惠券与发放规则
 
 ### 🚀 快速上手
 - 在左侧点击能力模块，或直接输入需求
@@ -865,7 +865,7 @@ function generateOnboarding(input: string): AIResponseResult {
   return {
     message: `## 👋 欢迎！
 
-我是金融运营助手，可以帮你完成营销方案生成、AI圈人、外呼投放、数据查询等任务。
+我是金融运营助手，可以帮你完成营销方案生成、AI圈人、外呼投放、营销券配置等任务。
 
 **你希望我帮你做什么？** 直接输入你的需求即可开始。`,
     panelType: 'onboarding',
@@ -888,7 +888,7 @@ function generateClarification(_input: string, cap: Capability): AIResponseResul
     plan: '你可以告诉我：产品类型、目标人群、预算范围、活动时间等',
     segment: '你可以告诉我：目标画像、行为条件、预估量级要求等',
     outbound: '你可以告诉我：外呼目标、话术场景、拨打时段等',
-    data: '你可以告诉我：查询指标、时间范围、对比维度等',
+    data: '你可以告诉我：券面额、使用门槛、发放对象、发放总量、有效期等',
   };
 
   return {
@@ -953,18 +953,20 @@ function generateByCapability(_input: string, cap: Capability, _campaign: Campai
       };
     case 'data':
       return {
-        message: `## 投放效果数据
+        message: `## 营销券配置
 
-| 指标 | 数值 |
-|------|------|
-| 拨打量 | 48,230 通 |
-| 接通率 | 45.0% |
-| 意向率 | 32.1% |
+| 券参数 | 配置值 |
+|---------|--------|
+| 券类型 | 满减券 |
+| 面额/门槛 | 满200减30 |
+| 发放总量 | 50,000 张 |
+| 有效期 | 领后7天 |
+| 预估核销率 | 32% |
 
-> 数据持续回流中，可随时查询最新效果。`,
+> 券配置已生成，确认后可提交发放。`,
         panelType: 'data',
         panelContent: buildDataContent(),
-        actionType: null,
+        actionType: 'confirm',
       };
   }
 }
