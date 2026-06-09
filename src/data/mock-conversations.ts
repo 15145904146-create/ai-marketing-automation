@@ -1,4 +1,5 @@
 import type { Conversation } from '../types';
+import { c1Messages, c2Messages, c3Messages, c4Messages } from './mock-history-messages';
 
 // 演示用：处于不同阶段的历史对话（尚未推进到投放阶段）
 export const mockConversations: Conversation[] = [
@@ -8,6 +9,8 @@ export const mockConversations: Conversation[] = [
     date: '06/04',
     preview: '想针对AUM>50万的客户做一波夏季理财营销，预算50万…',
     stage: 'clarifying',
+    startedAt: '2026-06-04',
+    messages: c1Messages,
   },
   {
     id: 'c2',
@@ -17,6 +20,8 @@ export const mockConversations: Conversation[] = [
     stage: 'plan_generated',
     channel: 'outbound_call',
     audienceSize: '12,000',
+    startedAt: '2026-06-03',
+    messages: c2Messages,
   },
   {
     id: 'c3',
@@ -26,6 +31,8 @@ export const mockConversations: Conversation[] = [
     stage: 'audience_ready',
     channel: 'outbound_call',
     audienceSize: '6,400',
+    startedAt: '2026-06-02',
+    messages: c3Messages,
   },
   {
     id: 'c4',
@@ -35,5 +42,7 @@ export const mockConversations: Conversation[] = [
     stage: 'material_ready',
     channel: 'outbound_call',
     audienceSize: '9,800',
+    startedAt: '2026-05-30',
+    messages: c4Messages,
   },
 ];

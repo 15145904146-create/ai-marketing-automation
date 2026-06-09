@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import Sidebar from './components/Sidebar/Sidebar';
 import ChatWindow from './components/Chat/ChatWindow';
 import RightPanel from './components/Panel/RightPanel';
-import DeliveryRecordDetail from './components/Delivery/DeliveryRecordDetail';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import LoginModal from './auth/LoginModal';
 import { mockDeliveryRecords } from './data/mock-delivery-records';
@@ -33,6 +32,15 @@ function AppContent() {
   const selectedRecord = selectedRecordId
     ? deliveryRecords.find(r => r.id === selectedRecordId) ?? null
     : null;
+
+  const selectedConversation = activeConversationId
+    ? conversations.find(c => c.id === activeConversationId) ?? null
+    : null;
+
+  // 选中历史记录时加载其历史消息；未选中时返回 undefined（保持空状态首页）
+  const initialMessages = selectedRecord?.messages ?? selectedConversation?.messages;
+  // 使用选中 ID 作为 key 一部分，确保切换历史记录时 ChatWindow 重新挂载
+  const chatKey = `${conversationKey}-${selectedRecordId ?? activeConversationId ?? 'new'}`;
 
   const handleSkillSelect = (skillId: string | null) => {
     setActiveSkill(skillId);
@@ -123,27 +131,20 @@ function AppContent() {
         onCopyCampaign={handleCopyCampaign}
       />
 
-      {/* Main content: Chat or Delivery Record Detail + Right Panel */}
+      {/* Main content: Chat (点击历史记录后加载历史对话) + Right Panel */}
       <main className="ml-[280px] h-full relative z-10">
-        {selectedRecord ? (
-          <DeliveryRecordDetail
-            record={selectedRecord}
-            onBack={() => setSelectedRecordId(null)}
-            onCopyCampaign={handleCopyCampaign}
-          />
-        ) : (
-          <ChatWindow
-            key={conversationKey}
-            activeSkill={activeSkill}
-            onClearSkill={handleClearSkill}
-            onPanelUpdate={handlePanelUpdate}
-            onConversationStart={handleConversationStart}
-            campaign={campaign}
-            onCampaignChange={setCampaign}
-            hasHistory={hasHistory}
-            activeCampaignCount={activeCampaignCount}
-          />
-        )}
+        <ChatWindow
+          key={chatKey}
+          activeSkill={activeSkill}
+          onClearSkill={handleClearSkill}
+          onPanelUpdate={handlePanelUpdate}
+          onConversationStart={handleConversationStart}
+          campaign={campaign}
+          onCampaignChange={setCampaign}
+          hasHistory={hasHistory}
+          activeCampaignCount={activeCampaignCount}
+          initialMessages={initialMessages}
+        />
 
         <RightPanel
           panelType={panelType}

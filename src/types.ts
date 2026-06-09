@@ -32,9 +32,11 @@ export interface Conversation {
   title: string;
   date: string;
   preview: string;
-  stage?: JourneyStage;  // 对话在全链路中的当前阶段
-  channel?: DeliveryChannel; // 可选，如果已明确渠道
-  audienceSize?: string;     // 可选，如果已明确人群量级
+  stage?: JourneyStage;       // 对话在全链路中的当前阶段
+  channel?: DeliveryChannel;  // 可选，如果已明确渠道
+  audienceSize?: string;      // 可选，如果已明确人群量级
+  startedAt?: string;         // 对话开始时间 YYYY-MM-DD
+  messages?: Message[];       // 历史对话消息
 }
 
 // ===== Delivery Record (team-shared campaign records) =====
@@ -125,6 +127,8 @@ export interface DeliveryRecord {
   planSnapshot?: PlanSnapshot;
   config?: DeliveryConfig;
   chatHistory?: ChatTurn[];
+  startedAt?: string;     // 活动对话开始时间 YYYY-MM-DD
+  messages?: Message[];   // 历史对话消息
 }
 
 // ===== Campaign =====

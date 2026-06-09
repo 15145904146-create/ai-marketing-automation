@@ -58,6 +58,7 @@ type HistoryItem = {
   roi?: number;
   progress?: number;
   dateRange?: string;
+  startedAt?: string;
 };
 
 type FilterStage = 'all' | JourneyStage;
@@ -85,6 +86,7 @@ export default function HistoryList({
       stage: c.stage ?? 'clarifying',
       channel: c.channel,
       audienceSize: c.audienceSize,
+      startedAt: c.startedAt,
     }));
     const recItems: HistoryItem[] = deliveryRecords.map(r => ({
       id: r.id,
@@ -99,6 +101,7 @@ export default function HistoryList({
       roi: r.roi,
       progress: r.progress,
       dateRange: r.dateRange,
+      startedAt: r.startedAt,
     }));
 
     const all = [...convItems, ...recItems];
@@ -233,7 +236,6 @@ export default function HistoryList({
                 const isActive = item.kind === 'conversation'
                   ? activeConversationId === item.id
                   : activeRecordId === item.id;
-                const isCompleted = item.kind === 'delivery' && (item.stage === 'completed' || item.stage === 'reviewed');
                 return (
                   <div key={`${item.kind}-${item.id}`} className="relative group">
                     <button
@@ -253,24 +255,14 @@ export default function HistoryList({
                           {sc.label}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400 mt-1 truncate ml-4">
-                        {item.kind === 'delivery'
-                          ? `${channelLabel[item.channel || ''] || ''}${item.audienceSize ? ` · ${item.audienceSize}人` : ''}${item.roi != null ? ` · ROI ${item.roi}` : item.progress != null ? ` · 进度 ${item.progress}%` : ''}`
-                          : item.preview}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1.5 ml-4">
-                        <span className="text-xs text-slate-300">{item.dateRange || item.date}</span>
-                        {item.owner && (
-                          <>
-                            <span className="text-xs text-slate-300">·</span>
-                            <span className="text-xs text-slate-400">{item.owner}</span>
-                          </>
-                        )}
+                      {/* 底部小字：对话开始时间 YYYY-MM-DD */}
+                      <div className="text-xs text-slate-400 mt-1.5 ml-4">
+                        {item.startedAt || item.dateRange || item.date}
                       </div>
                     </button>
 
-                    {/* 操作按钮：对话支持删除，已完成投放支持「再做一波」 */}
-                    {item.kind === 'conversation' ? (
+                    {/* 对话项支持删除 */}
+                    {item.kind === 'conversation' && (
                       <button
                         onClick={(e) => handleDeleteClick(e, item.id)}
                         className="absolute top-2 right-2 p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
@@ -280,18 +272,7 @@ export default function HistoryList({
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
-                    ) : onCopyCampaign && isCompleted ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCopyCampaign(item.title);
-                        }}
-                        className="absolute top-2 right-2 px-2 py-1 rounded-md text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all opacity-0 group-hover:opacity-100 shadow-sm"
-                        title="基于此活动再做一波"
-                      >
-                        再做一波
-                      </button>
-                    ) : null}
+                    )}
                   </div>
                 );
               })}

@@ -21,6 +21,8 @@ interface ChatWindowProps {
   onCampaignChange: (campaign: Campaign) => void;
   hasHistory: boolean;
   activeCampaignCount: number;
+  /** 预加载的历史消息（点击左侧历史记录时传入） */
+  initialMessages?: Message[];
 }
 
 const skillLabels: Record<string, string> = {
@@ -41,8 +43,8 @@ const suggestedPrompts: Record<Capability, string[]> = {
   data: USER_PROMPT_TEMPLATES.data,
 };
 
-export default function ChatWindow({ activeSkill, onClearSkill, onPanelUpdate, onConversationStart, campaign, onCampaignChange, hasHistory, activeCampaignCount }: ChatWindowProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function ChatWindow({ activeSkill, onClearSkill, onPanelUpdate, onConversationStart, campaign, onCampaignChange, hasHistory, activeCampaignCount, initialMessages }: ChatWindowProps) {
+  const [messages, setMessages] = useState<Message[]>(() => initialMessages ?? []);
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
   const hasStartedRef = useRef(false);

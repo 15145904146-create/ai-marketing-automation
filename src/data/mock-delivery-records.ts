@@ -1,4 +1,5 @@
 import type { DeliveryRecord } from '../types';
+import { d1Messages, d2Messages, d3Messages, d4Messages } from './mock-history-messages';
 
 export const mockDeliveryRecords: DeliveryRecord[] = [
   {
@@ -13,6 +14,8 @@ export const mockDeliveryRecords: DeliveryRecord[] = [
     channel: 'outbound_call',
     audienceSize: '8,692',
     roi: 3.06,
+    startedAt: '2026-05-30',
+    messages: d1Messages,
     performance: {
       metrics: [
         { label: '拨打量', value: '17,384' },
@@ -157,6 +160,8 @@ export const mockDeliveryRecords: DeliveryRecord[] = [
     channel: 'outbound_call',
     audienceSize: '5,200',
     progress: 64,
+    startedAt: '2026-06-04',
+    messages: d2Messages,
     performance: {
       metrics: [
         { label: '拨打量', value: '8,320' },
@@ -265,6 +270,8 @@ export const mockDeliveryRecords: DeliveryRecord[] = [
     channel: 'outbound_call',
     audienceSize: '3,400',
     roi: 2.8,
+    startedAt: '2026-05-26',
+    messages: d3Messages,
     performance: {
       metrics: [
         { label: '拨打量', value: '6,800' },
@@ -374,6 +381,8 @@ export const mockDeliveryRecords: DeliveryRecord[] = [
     channel: 'sms',
     audienceSize: '15,000',
     roi: 1.9,
+    startedAt: '2026-05-19',
+    messages: d4Messages,
     performance: {
       metrics: [
         { label: '发送量', value: '15,000' },
