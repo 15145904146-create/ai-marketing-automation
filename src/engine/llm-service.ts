@@ -1,82 +1,18 @@
-// ===== DashScope LLM Service with Knowledge Base Tool Calling =====
+// ===== DashScope LLM Service (pure LLM, no external tools) =====
 
 const API_KEY = import.meta.env.VITE_DASHSCOPE_API_KEY || '';
 const BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 const MODEL = 'qwen3.7-max';
-const KB_API_BASE = 'http://localhost:8765';
-
-// ===== Knowledge Base Tool Definitions (for DashScope function calling) =====
-const KB_TOOLS = [
-  {
-    type: 'function' as const,
-    function: {
-      name: 'query_knowledge_base',
-      description: '语义检索 PRD 知识库。输入自然语言查询，返回最相关的历史 PRD 片段（含业务域标签和相关度评分）。当用户的问题涉及历史PRD、产品需求文档、业务方案设计时可调用。支持按业务域过滤（优品先采后付/淘宝先采后付/企服先采后付/极速回款/生意卡）。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: '自然语言查询（如"先采后付退款流程"、"极速回款开通页面设计"）' },
-          business_domain: { type: 'string', description: '业务域过滤（可选）', enum: ['优品先采后付', '淘宝先采后付', '企服先采后付', '极速回款', '生意卡'] },
-          top: { type: 'integer', description: '返回结果数量（默认 5）' },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'get_kb_stats',
-      description: '获取知识库统计信息：文档数量、业务域分布等。当用户想了解知识库概况时调用。',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'list_kb_documents',
-      description: '列出知识库中的文档。支持按业务域和关键词过滤。',
-      parameters: {
-        type: 'object',
-        properties: {
-          business_domain: { type: 'string', description: '按业务域过滤' },
-          keyword: { type: 'string', description: '按标题关键词过滤' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'get_prd_templates',
-      description: '获取 PRD 模板。不传参数返回模板列表，传 template_name 返回具体模板全文。',
-      parameters: {
-        type: 'object',
-        properties: {
-          template_name: { type: 'string', description: '模板名称（如 full_product / new_feature / optimization / lightweight / financial）' },
-        },
-      },
-    },
-  },
-];
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
+  role: 'system' | 'user' | 'assistant';
   content: string;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-}
-
-interface ToolCall {
-  id: string;
-  type: 'function';
-  function: { name: string; arguments: string };
 }
 
 // ===== System Prompt =====
 const SYSTEM_PROMPT = `你是「金融运营助手」，一个专业的AI营销运营顾问。你服务于金融行业的运营团队，帮助他们制定营销策略、圈选目标人群、执行外呼投放、分析数据效果。
 
-你拥有一个知识库工具（query_knowledge_base），可以在需要时查询历史PRD和业务方案文档。当用户的问题涉及历史方案、产品设计、业务规则时，主动调用知识库获取参考信息。
+所有输出内容均由你基于自身知识与推理直接生成，不依赖任何外部工具或知识库。
 
 ## 输出格式（严格遵守）
 你必须始终以纯JSON格式回复，不要输出任何Markdown符号（如 #、|、**、--- 等），不要输出任何非JSON文本。
@@ -90,8 +26,7 @@ JSON结构如下：
     { "type": "questions", "items": ["您的预算范围是多少？", "活动周期预计多长？"] },
     { "type": "table", "headers": ["层级", "定义", "策略重点"], "rows": [["A类", "逾期≤7天", "高频外呼+短信"]] },
     { "type": "metrics", "items": [{"label": "预估ROI", "value": "1:5 - 1:7"}, {"label": "可触达人群", "value": "3-5万"}] },
-    { "type": "confirm", "message": "请确认以上框架，我将输出完整执行方案" },
-    { "type": "kb_ref", "content": "知识库参考：从XX文档中找到了相关信息..." }
+    { "type": "confirm", "message": "请确认以上框架，我将输出完整执行方案" }
   ]
 }
 
@@ -102,7 +37,6 @@ JSON结构如下：
 - 用一段text回显你对用户意图的理解
 - 用params表格列出已识别参数，来源标注为「用户直说」「AI推断」「待明确」
 - 用questions列出 2-3 个最关键的追问
-- 如果用户问题涉及历史方案/产品PRD，调用 query_knowledge_base 查询并引用结果
 - 不要输出策略建议
 
 ### 第二阶段（stage: "framework"）
@@ -158,25 +92,6 @@ export function getConversationHistory(): ChatMessage[] {
   return [...conversationHistory];
 }
 
-// ===== KB API Bridge =====
-async function callKBTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-  try {
-    const res = await fetch(`${KB_API_BASE}/api/${toolName}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(args),
-    });
-    if (!res.ok) {
-      return `KB API error: ${res.status}`;
-    }
-    const data = await res.json();
-    return JSON.stringify(data, null, 2);
-  } catch (err) {
-    console.warn('[KB] API call failed (is kb-api-server running?):', err);
-    return '知识库服务暂时不可用，请稍后重试。';
-  }
-}
-
 // ===== Non-streaming call =====
 export async function callLLM(userInput: string): Promise<string> {
   conversationHistory.push({ role: 'user', content: userInput });
@@ -198,7 +113,6 @@ export async function callLLM(userInput: string): Promise<string> {
         messages,
         temperature: 0.7,
         max_tokens: 4000,
-        tools: KB_TOOLS,
       }),
     });
 
@@ -208,13 +122,7 @@ export async function callLLM(userInput: string): Promise<string> {
     }
 
     const data = await res.json();
-    const choice = data.choices?.[0];
-    let reply = choice?.message?.content || '抱歉，未能生成回复。';
-
-    // Handle tool calls (non-streaming)
-    if (choice?.message?.tool_calls?.length > 0) {
-      reply = await handleToolCalls(choice.message, messages);
-    }
+    const reply = data.choices?.[0]?.message?.content || '抱歉，未能生成回复。';
 
     conversationHistory.push({ role: 'assistant', content: reply });
     return reply;
@@ -224,64 +132,7 @@ export async function callLLM(userInput: string): Promise<string> {
   }
 }
 
-// ===== Handle tool calls (used by both streaming and non-streaming) =====
-async function handleToolCalls(
-  assistantMessage: { content: string; tool_calls: ToolCall[] },
-  baseMessages: ChatMessage[],
-): Promise<string> {
-  // Add assistant message with tool calls to conversation
-  const toolMessages: ChatMessage[] = [
-    ...baseMessages,
-    {
-      role: 'assistant',
-      content: assistantMessage.content || '',
-      tool_calls: assistantMessage.tool_calls,
-    },
-  ];
-
-  // Execute each tool call
-  for (const tc of assistantMessage.tool_calls) {
-    let args: Record<string, unknown> = {};
-    try {
-      args = JSON.parse(tc.function.arguments);
-    } catch {
-      // empty args
-    }
-
-    console.log(`[LLM] Tool call: ${tc.function.name}(${JSON.stringify(args)})`);
-    const result = await callKBTool(tc.function.name, args);
-
-    toolMessages.push({
-      role: 'tool',
-      content: result,
-      tool_call_id: tc.id,
-    });
-  }
-
-  // Get final response with tool results
-  const res = await fetch(`${BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: toolMessages,
-      temperature: 0.7,
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`LLM API error ${res.status} after tool calls`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '抱歉，未能生成回复。';
-}
-
-// ===== Streaming call (with tool support) =====
+// ===== Streaming call =====
 export async function callLLMStream(
   userInput: string,
   onChunk: (accumulated: string) => void,
@@ -306,7 +157,6 @@ export async function callLLMStream(
         temperature: 0.7,
         max_tokens: 4000,
         stream: true,
-        tools: KB_TOOLS,
       }),
     });
 
@@ -321,8 +171,6 @@ export async function callLLMStream(
     const decoder = new TextDecoder();
     let accumulated = '';
     let buffer = '';
-    let toolCallAccum: Record<number, { id: string; name: string; args: string }> = {};
-    let hasToolCalls = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -341,129 +189,13 @@ export async function callLLMStream(
 
         try {
           const json = JSON.parse(payload);
-          const delta = json.choices?.[0]?.delta;
-          if (!delta) continue;
-
-          // Handle tool call deltas
-          if (delta.tool_calls?.length > 0) {
-            hasToolCalls = true;
-            for (const tc of delta.tool_calls) {
-              const idx = tc.index ?? 0;
-              if (!toolCallAccum[idx]) {
-                toolCallAccum[idx] = { id: tc.id || '', name: '', args: '' };
-              }
-              if (tc.id) toolCallAccum[idx].id = tc.id;
-              if (tc.function?.name) toolCallAccum[idx].name += tc.function.name;
-              if (tc.function?.arguments) toolCallAccum[idx].args += tc.function.arguments;
-            }
-            // Show "searching knowledge base..." indicator
-            if (!accumulated) {
-              accumulated = '{"stage":"clarification","sections":[{"type":"text","content":"正在检索知识库..."}]}';
-              onChunk(accumulated);
-            }
-            continue;
-          }
-
-          // Regular content delta
-          if (delta.content) {
-            accumulated += delta.content;
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            accumulated += delta;
             onChunk(accumulated);
           }
         } catch {
           // skip malformed chunks
-        }
-      }
-    }
-
-    // If tool calls were detected, execute them and get final response
-    if (hasToolCalls) {
-      const toolCalls: ToolCall[] = Object.values(toolCallAccum).map(tc => ({
-        id: tc.id,
-        type: 'function' as const,
-        function: { name: tc.name, arguments: tc.args },
-      }));
-
-      console.log('[LLM] Tool calls detected:', toolCalls.map(t => t.function.name));
-
-      // Build tool messages
-      const toolMessages: ChatMessage[] = [
-        ...messages,
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: toolCalls,
-        },
-      ];
-
-      // Execute tools
-      for (const tc of toolCalls) {
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(tc.function.arguments);
-        } catch {
-          // empty args
-        }
-
-        onChunk('{"stage":"clarification","sections":[{"type":"text","content":"正在查询知识库..."}]}');
-
-        const result = await callKBTool(tc.function.name, args);
-        toolMessages.push({
-          role: 'tool',
-          content: result,
-          tool_call_id: tc.id,
-        });
-      }
-
-      // Get final streaming response with tool results
-      const finalRes = await fetch(`${BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: toolMessages,
-          temperature: 0.7,
-          max_tokens: 4000,
-          stream: true,
-        }),
-      });
-
-      if (!finalRes.ok) {
-        throw new Error(`LLM API error after tool calls: ${finalRes.status}`);
-      }
-
-      const finalReader = finalRes.body?.getReader();
-      if (!finalReader) throw new Error('No final response body');
-
-      accumulated = '';
-      buffer = '';
-
-      while (true) {
-        const { done, value } = await finalReader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const fLines = buffer.split('\n');
-        buffer = fLines.pop() || '';
-
-        for (const line of fLines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data: ')) continue;
-          const payload = trimmed.slice(6);
-          if (payload === '[DONE]') continue;
-
-          try {
-            const json = JSON.parse(payload);
-            const delta = json.choices?.[0]?.delta?.content;
-            if (delta) {
-              accumulated += delta;
-              onChunk(accumulated);
-            }
-          } catch {
-            // skip
-          }
         }
       }
     }
