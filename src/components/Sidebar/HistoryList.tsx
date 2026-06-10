@@ -71,9 +71,8 @@ export default function HistoryList({
   const [expanded, setExpanded] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filterStage, setFilterStage] = useState<FilterStage>('all');
-  const [filterChannel, setFilterChannel] = useState<FilterChannel>('all');
+  const filterStage: FilterStage = 'all';
+  const filterChannel: FilterChannel = 'all';
 
   // 合并对话记录与投放记录为统一历史列表
   const items = useMemo<HistoryItem[]>(() => {
@@ -165,63 +164,7 @@ export default function HistoryList({
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
-
-        <button
-          onClick={() => setFilterOpen(!filterOpen)}
-          className={`p-1 rounded-md transition-all text-slate-400 hover:text-slate-600 hover:bg-white/60 ${filterOpen || filterStage !== 'all' || filterChannel !== 'all' ? 'text-slate-600 bg-white/40' : ''}`}
-          title="筛选"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-          </svg>
-        </button>
       </div>
-
-      {/* Filter panel */}
-      {filterOpen && expanded && (
-        <div className="px-3 pb-2">
-          <div className="glass rounded-lg p-3 space-y-2">
-            <div className="flex items-start gap-2">
-              <span className="text-xs text-slate-400 w-8 mt-0.5">阶段</span>
-              <div className="flex flex-wrap gap-1">
-                <button
-                  onClick={() => setFilterStage('all')}
-                  className={`px-2 py-0.5 rounded text-xs transition-all ${
-                    filterStage === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                  }`}
-                >全部</button>
-                {(Object.keys(stageConfig) as JourneyStage[])
-                  .sort((a, b) => stageConfig[a].order - stageConfig[b].order)
-                  .map(s => (
-                    <button
-                      key={s}
-                      onClick={() => setFilterStage(s)}
-                      className={`px-2 py-0.5 rounded text-xs transition-all ${
-                        filterStage === s ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                      }`}
-                    >{stageConfig[s].label}</button>
-                  ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 w-8">渠道</span>
-              <div className="flex gap-1">
-                {(['all', 'outbound_call', 'sms'] as FilterChannel[]).map(c => (
-                  <button
-                    key={c}
-                    onClick={() => setFilterChannel(c)}
-                    className={`px-2 py-0.5 rounded text-xs transition-all ${
-                      filterChannel === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                    }`}
-                  >
-                    {c === 'all' ? '全部' : channelLabel[c] || c}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {expanded && (
         <div className="flex-1 overflow-y-auto px-3 pb-2">
