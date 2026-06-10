@@ -28,6 +28,7 @@ function AppContent() {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [deliveryRecords] = useState<DeliveryRecord[]>(mockDeliveryRecords);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
 
   const selectedRecord = selectedRecordId
     ? deliveryRecords.find(r => r.id === selectedRecordId) ?? null
@@ -129,10 +130,12 @@ function AppContent() {
         activeRecordId={selectedRecordId}
         onDeliveryRecordSelect={handleDeliveryRecordSelect}
         onCopyCampaign={handleCopyCampaign}
+        sidebarWidth={sidebarWidth}
+        onSidebarWidthChange={setSidebarWidth}
       />
 
       {/* Main content: Chat (点击历史记录后加载历史对话) + Right Panel */}
-      <main className="ml-[280px] h-full relative z-10">
+      <main className="h-full relative z-10" style={{ marginLeft: sidebarWidth }}>
         <ChatWindow
           key={chatKey}
           activeSkill={activeSkill}
